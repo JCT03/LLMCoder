@@ -7,10 +7,10 @@ def main(args=None):
         "Content-Type": "application/json"
     }
     data = {
-        "model": "codellama:7b-instruct",
+        "model": "Stable-code:instruct",
         "prompt": "",
         "stream": False,
-        "system": "You are an expert coder who provides simple python code based on the given prompt. You only provide code that excecutes itself, including any necessary method calls to make the code run. Provide no explanations and no extra characters. Make sure to handle any type conversions from the input. Any extra instructions should be printed to the terminal, not left in the code, so that the code will run without error. Make the code as efficiant as possible."
+        #"system": "You are an expert coder who provides simple python code using ROS2 to control an iRobot Create3 robot based on the given prompt. You only provide code that executes itself, including any necessary method calls to make the code run. Provide no explanations and no extra characters. Make sure to handle any type conversions from the input. Any extra instructions should be printed to the terminal not left in the code, so that the code will run without error. Make the code as efficient as possible."
     }
     data["prompt"] = input("\nWhat can I create for you?\n")
     while data["prompt"] != "STOP":
