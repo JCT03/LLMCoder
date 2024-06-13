@@ -1,10 +1,11 @@
 import HTNPlanner
 import requests
 import json
+import re
 
-class LLMConnector:
-    def __init__(self, LLM, systemMessage):
-        self.url = "http://localhost:11434/api/generate"
+class LLMConnector: 
+    def __init__(self, LLM, systemMessage): #takes the name and a system message as input and creates the dictionary needed to access the llm
+        self.url = "http://localhost:11434/api/generate" #local ollama port
         self.headers = {
             "Content-Type": "application/json"
         }
@@ -15,14 +16,14 @@ class LLMConnector:
             "system": systemMessage
         }
 
-    def prompt(self, promptMessage):
-        self.data["prompt"] = promptMessage
-        response = requests.post(self.url, headers=self.headers, data=json.dumps(self.data))
-        if response.status_code == 200:
+    def prompt(self, promptMessage): #takes prompt as input, updates dictionary, and creates call to llm through ollama
+        self.data["prompt"] = promptMessage 
+        response = requests.post(self.url, headers=self.headers, data=json.dumps(self.data)) #posts request to ollama API and recieves response
+        if response.status_code == 200: #code for success
             response_text = response.text
-            code = json.loads(response.text)["response"]
-            code = code.replace("```", "")
-            code = code.replace(" print", "print")
+            code = json.loads(response.text)["response"] #extracts code from json object
+            code = code.replace("```", "") #some llms place these characters around code output
+            code = code.replace(" print", "print") #some llms place space before method call
             return code
         else:
             print( "API Error:", response.status_code, response.text)
@@ -31,6 +32,7 @@ class LLMConnector:
 
 
 def main(args=None):
+    #setup HTNPlanner using methods from HTNPlanner.py
     state = HTNPlanner.State('3rd-floor')
     state.visited = {'Robot1': set()}
     state.loc = {'Robot1': 'R312', 'Package1': 'R322', 'Package2': 'R321'}
@@ -42,7 +44,7 @@ def main(args=None):
     planner = HTNPlanner.Planner()
     planner.declare_operators(HTNPlanner.go, HTNPlanner.pick_up, HTNPlanner.put_down)
     planner.declare_methods(HTNPlanner.find_route, HTNPlanner.deliver)
-
+    #Sets up object that is used to generate method calls through ollama API with phi3:3.8b as the model and a description of the floor and task as a system message
     methodCaller = LLMConnector("phi3:3.8b","""The following is a list of rooms and descriptions on the third floor of MCAxiom. 
 
 ‘R314’ is a classroom with several white boards, TVs on the wall, and furniture that can move around the room. It is one of the larger classrooms.
@@ -68,27 +70,38 @@ print(planner.anyhop(state, [('deliver', '**package**', '**room**')]))
 The method returns a plan to deliver a specified package to the specified room.
 
 You are to create a method call to ‘deliver’ using the specified format by replacing '**package**' with the name of the package and '**room**' with the name of the room as identified from the input. 
-Return only the method call with no extra characters, instructions, explanations, or labels. 
+Return only a single method call with no extra characters, instructions, explanations, or labels. 
 """)
+    #Sets up object that is used to evaluate user verification through ollama API with phi3:3.8b as the model and a description of the floor and task as a system message
+    classifier = LLMConnector("phi3:3.8b", "You are an expert classifier who determines if the prompt is a positive or negative response. If it is a positive response, output a 1. If it is a negative response or you are unsure, output a 0. Do not include any additional text, explanations, or notes.")
     
-
-    prompt = input("\nWhat can I create for you?\n")
-    while prompt != "STOP":
-        for x in range(2):
+    prompt = input("What can I do for you?\n") #recieves first prompt from user
+    while prompt != "STOP": #STOP as a flag
+        for x in range(2): #to allow a second try with the same prompt if an error is recieved
             try:
-                code = methodCaller.prompt(prompt)
-                print(code)
-                exec(code)
+                response = 0 #0 for negative verification, 1 for positive verification
+                for i in range(5): #allows four additional attempts to fine tune prompt before failing process
+                    code = methodCaller.prompt(prompt) #recieves code from llm
+                    print(code) #used to print code to terminal during testing
+                    indices = [i.start() for i in re.finditer("'", code)] #identifies indicees of apostrophe in method call- these are used to determine where the item and location are in the string
+                    response = input("To confirm, would you like " + code[(indices[2]+1):indices[3]] + " to be delivered to " + code[(indices[4]+1):indices[5]] + "?\n") #uses indices to parse string and verify request
+                    classification = classifier.prompt(response) #recieves a 0 or 1 as a response from llm
+                    if '1' in classification: #user has verified prompt
+                        exec(code) #executed method call
+                        break #breaks loop because no further fine tuning is needed
+                    if i == 4: #process has failed
+                        print("Unable to verify instructions.")
+                        break #prevents useless prompt
+                    prompt = prompt + input("Please clarify\n") #adds additional instructions to orginial prompt
             except Exception as e:
-                print(e)
-                if x==1:
-                    print("Process Failed\n\n")
-                else:
-                    print("Trying Again\n\n")
+                print(e) #prints error that most likely comes from running the method call for testing purposes
+                if x==1: #if this is the second attempt at running code, the process fails
+                    print("Process Failed")
+                else: # loops back to try because x < 1
+                    print("Trying Again")
             else:
-                print("End Code Output\n\n")
-                break
-        prompt = input("\nWhat can I create for you?\n")
+                break #breaks loop to recieve new input due to prompt fine tuning failing or code succesfully excecuting
+        prompt = input("What can I do for you?\n") #prompts for new input
 
 if __name__ == '__main__':
     main()
