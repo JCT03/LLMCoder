@@ -4,15 +4,8 @@ import HTNPlanner
 import requests
 import json
 import re
-
-class SpeechToText:
-    def __init__(self):
-        self.r = sr.Recognizer() #creates instance on speech recognition object
-        self.mic = sr.Microphone() #creates object for microphone
-    def getSpeechInput(self):
-        with self.mic as source:
-            audio = self.r.listen(source)
-        return self.r.recognize_wit(audio, key="HGEODKAPMSH73UNQHATKFVWJZUZYKFUZ")
+import gtts  
+from playsound import playsound  
 
 class LLMConnector: 
     def __init__(self, LLM, systemMessage): #takes the name and a system message as input and creates the dictionary needed to access the llm
@@ -40,7 +33,22 @@ class LLMConnector:
             print( "API Error:", response.status_code, response.text)
             return None
         
+def getSpeechInput(): #returns result of voice input
+        r = sr.Recognizer() #creates instance on speech recognition object
+        mic = sr.Microphone() #creates object for microphone
+        try:
+            with mic as source:
+                audio = r.listen(source)
+            return r.recognize_wit(audio, key="HGEODKAPMSH73UNQHATKFVWJZUZYKFUZ").lower() #gets transcription from wit.ai (meta) API and returns lower case
+        except: #error typically occurs from no input
+            print("waiting")
+            return getSpeechInput() #tries again
 
+def outputSpeech(text):
+    tempSound = gtts.gTTS(text)
+    tempSound.save("tempFile.mp3")
+    playsound("tempFile.mp3")
+    os.remove("tempFile.mp3")
 
 def main(args=None):
     #setup HTNPlanner using methods from HTNPlanner.py
@@ -56,7 +64,7 @@ def main(args=None):
     planner.declare_operators(HTNPlanner.go, HTNPlanner.pick_up, HTNPlanner.put_down)
     planner.declare_methods(HTNPlanner.find_route, HTNPlanner.deliver)
     #Sets up instance of object that is used to generate method calls through ollama API with phi3:3.8b as the model and a description of the floor and task as a system message
-    methodCaller = LLMConnector("phi3:3.8b","""The following is a list of rooms and descriptions on the third floor of MCAxiom. 
+    methodCaller = LLMConnector("phi3:instruct","""The following is a list of rooms and descriptions on the third floor of MCAxiom. 
 
 ‘R314’ is a classroom with several white boards, TVs on the wall, and furniture that can move around the room. It is one of the larger classrooms.
 
@@ -85,11 +93,9 @@ Return only a single method call with no extra characters, instructions, explana
 """)
     #Sets up instance of object that is used to evaluate user verification through ollama API with phi3:3.8b as the model and a description of the floor and task as a system message
     classifier = LLMConnector("phi3:3.8b", "You are an expert classifier who determines if the prompt is a positive or negative response. If it is a positive response, output a 1. If it is a negative response or you are unsure, output a 0. Do not include any additional text, explanations, or notes.")
-    transcriber = SpeechToText() #sets up instance of SpeechToText used for recieving speech input
-
-    os.system("say 'What can I do for you?'") #post message to terminal to create audio output
-    prompt = transcriber.getSpeechInput().lower() #gets first prompt from user and makes lower case
-    print(prompt)
+    outputSpeech("Ready for command") 
+    prompt = getSpeechInput() #gets first prompt from user
+    print("Input: " + prompt)
     while prompt != "stop": #STOP as a flag
         for x in range(2): #to allow a second try with the same prompt if an error is recieved
             try:
@@ -98,30 +104,30 @@ Return only a single method call with no extra characters, instructions, explana
                     code = methodCaller.prompt(prompt) #recieves code from llm
                     print(code) #used to print code to terminal during testing
                     indices = [i.start() for i in re.finditer("'", code)] #identifies indicees of apostrophe in method call- these are used to determine where the item and location are in the string
-                    outputMessage= "say 'To confirm, would you like " + code[(indices[2]+1):indices[3]] + " to be delivered to " + code[(indices[4]+1):indices[5]] + "?'" #uses indices to parse string
-                    os.system(outputMessage) #uses terminal to speak message
-                    response = transcriber.getSpeechInput().lower() #Gets speech to text response from user
-                    print(response)
+                    outputSpeech("To confirm, would you like " + code[(indices[2]+1):indices[3]] + " to be delivered to " + code[(indices[4]+1):indices[5]] + "?") #uses indices to parse string
+                    response = getSpeechInput() #Gets speech to text response from user
+                    print("Input: " + response)
                     classification = classifier.prompt(response) #recieves a 0 or 1 as a response from llm
                     if '1' in classification: #user has verified prompt
-                        exec(code) #executed method call
+                        exec(code.partition('\n')[0]) #executes method call, removes any extra lines
                         break #breaks loop because no further fine tuning is needed
                     if i == 4: #process has failed
-                        os.system("say 'Unable to verify instructions'")
+                        outputSpeech("Unable to verify instructions")
                         break #prevents useless prompt
-                    os.system("say 'Please clarify your request'") #post message to terminal to create audio output
-                    newInfo = transcriber.getSpeechInput().lower() #gets clarification from user and makes lower case
+                    outputSpeech("Please clarify your request") 
+                    newInfo = getSpeechInput() #gets clarification from user and 
+                    print("Input: " + newInfo)
                     prompt = prompt + newInfo #adds additional instructions to orginial prompt
             except Exception as e:
-                print(e) #prints error that most likely comes from running the method call for testing purposes
+                print(e) #prints error- most likely comes from running bad method call 
                 if x==1: #if this is the second attempt at running code, the process fails
-                    os.system("say 'Process Failed'")
-                else: # loops back to try because x < 1
-                    print("Process Failed")
+                    outputSpeech("Process failed")
+                else: # loops back to try again because there has only been one attempt with that prompt
+                    outputSpeech("Trying again")
             else:
                 break #breaks loop to recieve new input due to prompt fine tuning failing or code succesfully excecuting
-        os.system("say 'What can I do for you?'") #post message to terminal to create audio output
-        prompt = transcriber.getSpeechInput().lower() #gets new prompt from user and makes lower case
-        print(prompt)
+        outputSpeech("Ready for command") 
+        prompt = getSpeechInput() #gets new prompt from user 
+        print("Input: " + prompt)
 if __name__ == '__main__':
     main()
