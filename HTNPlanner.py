@@ -330,7 +330,7 @@ def find_route(state, robot, start, end):
         return TaskList([[('go', robot, start, neighbor), 
                           ('find_route', robot, neighbor, end)] 
                          for neighbor in state.connected[start]])
-    
+
 def pick_up(state, robot, item):
     if state.loc[robot] == state.loc[item]:
         state.loc[item] = robot
@@ -351,5 +351,11 @@ def deliver(state, item, end):
                          ('pick_up', 'Robot1', item),
                          ('find_route', 'Robot1', state.loc[item], end), 
                          ('put_down', 'Robot1', item)])
+
+def navigate(state, end):
+    if state.loc['Robot1'] == end:
+        return TaskList(completed=True)
+    else:
+        return TaskList([('find_route', 'Robot1', state.loc['Robot1'], end)])
 
 
