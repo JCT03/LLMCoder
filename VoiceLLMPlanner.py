@@ -46,7 +46,7 @@ def getSpeechInput(output): #outputs message, returns result of voice input, tak
         try:
             with mic as source: #sets microphone as source for speech input
                 audio = r.listen(source) #gets audio from input source and saves as variable
-            input = r.recognize_wit(audio, key="HGEODKAPMSH73UNQHATKFVWJZUZYKFUZ").lower() #gets transcription from wit.ai (meta) API and puts in lower case
+            input = r.recognize_sphinx(audio).lower() #gets transcription from wit.ai (meta) API and puts in lower case
             print("Input: " + input) #prints recognized speech for testing purposes
             return input
         except: #error typically occurs from no input
@@ -282,7 +282,7 @@ def main(args=None):
     planner.declare_operators(HTNPlanner.go, HTNPlanner.pick_up, HTNPlanner.put_down) #sets operators available to planner
     planner.declare_methods(HTNPlanner.find_route, HTNPlanner.deliver, HTNPlanner.navigate) #sets methods available to planner
     systemState = RoutingState(state, planner) #sets first state of state machine to routing
-    os.system("ollama run phi3:3.8b /bye") #ensures ollama is open locally
+    #os.system("ollama run phi3:3.8b /bye") #ensures ollama is open locally
     while True: #continously runs actions of state and gets next state
         systemState = systemState.action() 
     
